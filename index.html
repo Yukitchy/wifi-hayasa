@@ -257,7 +257,7 @@ async function run(ssid) {
 const HELPER = 'http://localhost:8787';
 let nearby = null;
 async function helper(path) {
-  const r = await fetch(HELPER + path, { cache: 'no-store' });
+  const r = await fetch(HELPER + path, { cache: 'no-store', targetAddressSpace: 'loopback' }); // Chromeの「ローカルネットワークへのアクセス」確認を出す指定
   return r.json();
 }
 const sigText = (r) => (r > -60 ? '強' : r > -75 ? '中' : '弱');
