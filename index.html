@@ -48,11 +48,20 @@ h1 { margin: 6px 0 0; font-size: 40px; line-height: 1.1; font-weight: 900; lette
 .lane.live .bar { background: var(--accent); opacity: .55; transition: width .25s linear; }
 .lane.live .bar span { color: var(--on-accent); }
 .empty { font-size: 15px; line-height: 1.7; color: var(--sub); margin: 0; }
-.pick { background: var(--tint); border-radius: 16px; padding: 16px 18px; display: flex; gap: 14px; align-items: center; }
-.pick[hidden] { display: none; }
-.pick b { display: block; font-size: 17px; font-weight: 800; }
-.pick small { display: block; font-size: 13px; color: var(--sub); margin-top: 2px; }
-.pick svg { flex: none; color: var(--accent); }
+.meter { background: var(--tint); border-radius: 20px; padding: 18px 18px 16px; display: flex; flex-direction: column; align-items: center; }
+.meter svg { display: block; width: 100%; max-width: 280px; height: auto; }
+.meter .m-track { stroke: var(--lane); }
+.meter .m-fill { stroke: var(--accent); transition: stroke-dasharray .6s ease; }
+.meter .m-num { margin-top: -86px; display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.meter .m-num b { font-size: 60px; font-weight: 800; letter-spacing: -.03em; line-height: 1; }
+.meter .m-num span { font-size: 15px; color: var(--sub); }
+.meter .m-label { margin-top: 10px; font-size: 15px; font-weight: 700; color: var(--accent); text-align: center; }
+.meter .m-sub { margin-top: 2px; font-size: 13px; color: var(--sub); text-align: center; }
+.meter .m-stats { display: flex; gap: 32px; margin-top: 12px; }
+.meter .m-stats div { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.meter .m-stats small { font-size: 12px; color: var(--sub); }
+.meter .m-stats b { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .meter .m-fill { transition: none; } }
 form { display: flex; gap: 8px; align-items: flex-end; margin-top: auto; }
 label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--sub); }
 input { height: 48px; box-sizing: border-box; padding: 0 16px; border: 2px solid var(--field); border-radius: 24px; background: var(--bg); color: var(--fg); font: inherit; font-size: 16px; font-weight: 400; }
@@ -71,11 +80,17 @@ button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
     <div class="status" id="status" aria-live="polite"></div>
     <h1>どれが速い？</h1>
   </div>
-  <div class="lanes" id="lanes"></div>
-  <div class="pick" id="pick" hidden>
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>
-    <div><b id="pickName"></b><small id="pickWhy"></small></div>
+  <div class="meter" id="meter" aria-live="polite">
+    <svg viewBox="0 0 300 170" aria-hidden="true">
+      <path class="m-track" d="M20 150 A130 130 0 0 1 280 150" fill="none" stroke-width="16" stroke-linecap="round"/>
+      <path class="m-fill" id="mFill" d="M20 150 A130 130 0 0 1 280 150" fill="none" stroke-width="16" stroke-linecap="round" stroke-dasharray="0 999"/>
+    </svg>
+    <div class="m-num"><b id="mNum">…</b><span>Mbps</span></div>
+    <div class="m-label" id="mLabel"></div>
+    <div class="m-sub" id="mSub"></div>
+    <div class="m-stats"><div><small>上り</small><b id="mUp">—</b></div><div><small>応答</small><b id="mPing">—</b></div></div>
   </div>
+  <div class="lanes" id="lanes"></div>
   <form id="form">
     <label for="name">いま繋いでいるWi-Fiの名前
       <input id="name" type="text" autocomplete="off" placeholder="例: Office_2F" maxlength="40">
@@ -136,15 +151,15 @@ function render() {
       ? records.length + 'か所を記録しました'
       : '下は見本です。Wi-Fiの名前を入れて走らせると、本物の記録に入れ替わります';
   }
-  const pick = $('pick');
-  if (sorted.length > 1 && !live) {
-    const [a, b] = sorted;
-    $('pickName').textContent = a.ssid + ' に繋ぐのがおすすめ';
-    $('pickWhy').textContent = '2位の ' + b.ssid + ' より ' + (a.down / b.down).toFixed(1) + '倍速い（下り）';
-    pick.hidden = false;
-  } else {
-    pick.hidden = true;
-  }
+  const best = sorted[0], second = sorted[1];
+  const shown = live && live.down ? live.down : best.down;
+  const scale = shown > 500 ? 1000 : shown > 250 ? 500 : 250;
+  $('mFill').setAttribute('stroke-dasharray', (408.4 * Math.min(shown / scale, 1)).toFixed(1) + ' 999');
+  $('mNum').textContent = live && !live.down ? '…' : fmt(shown);
+  $('mLabel').textContent = live ? live.ssid + ' を測っています' : best.ssid + ' がいちばん速い';
+  $('mSub').textContent = live ? live.phase : second ? '2位の ' + second.ssid + ' より ' + (best.down / second.down).toFixed(1) + '倍速い（下り）' : (best.ex ? '見本です' : '');
+  $('mUp').textContent = live || best.up == null ? '—' : fmt(best.up) + ' Mbps';
+  $('mPing').textContent = live || best.ping == null ? '—' : best.ping + ' ms';
 }
 
 async function measurePing() {
