@@ -145,7 +145,7 @@ const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>
 const when = (t) => { const d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
 
 function render() {
-  const showing = records.length ? records : EXAMPLES;
+  const showing = records.length ? records : nearby ? [] : EXAMPLES; // アプリがあれば見本は出さない
   const sorted = showing.slice().sort((a, b) => b.down - a.down);
   const max = Math.max(1, ...sorted.map((r) => r.down), live ? live.down : 0);
   let html = '';
@@ -169,7 +169,13 @@ function render() {
       ? records.length + 'か所を記録しました'
       : '下は見本です。Wi-Fiの名前を入れて走らせると、本物の記録に入れ替わります';
   }
-  const best = sorted[0], second = sorted[1];
+  if (!sorted.length && !live) {
+    $('mNum').textContent = '…'; $('mFill').setAttribute('stroke-dasharray', '0 999');
+    $('mLabel').textContent = '周りのWi-Fiを調べています'; $('mSub').textContent = '';
+    $('mUp').textContent = '—'; $('mPing').textContent = '—';
+    return;
+  }
+  const best = sorted[0] || { ssid: live.ssid, down: 0 }, second = sorted[1];
   const shown = live && live.down ? live.down : best.down;
   const scale = shown > 500 ? 1000 : shown > 250 ? 500 : 250;
   $('mFill').setAttribute('stroke-dasharray', (408.4 * Math.min(shown / scale, 1)).toFixed(1) + ' 999');
@@ -254,7 +260,7 @@ async function run(ssid) {
 }
 
 // ---- Macの小アプリ（localhost:8787）があれば、周りのWi-Fiを自動で拾う ----
-const HELPER = 'http://localhost:8787';
+const HELPER = location.port === '8787' ? '' : 'http://localhost:8787'; // アプリが配るページ(localhost:8787)なら同じ場所なのでChromeの許可は要らない
 let nearby = null;
 async function helper(path) {
   const r = await fetch(HELPER + path, { cache: 'no-store', targetAddressSpace: 'loopback' }); // Chromeの「ローカルネットワークへのアクセス」確認を出す指定
@@ -264,7 +270,16 @@ const sigText = (r) => (r > -60 ? '強' : r > -75 ? '中' : '弱');
 async function refreshNear() {
   try { const d = await helper('/scan'); nearby = d.networks; nearby.current = d.current; } catch (e) { nearby = null; }
   renderNear();
+  render();
+  // 一度も測っていない接続済みWi-Fiは、開いたときに自動で測る
+  if (nearby && !busy && !autoDone) {
+    autoDone = true;
+    const todo = nearby.filter((n) => (n.known || n.current) && !records.some((r) => r.ssid === n.ssid)).map((n) => n.ssid);
+    for (const ssid of todo) await spot(ssid);
+    if (todo.length) refreshNear();
+  }
 }
+let autoDone = false;
 function renderNear() {
   const box = $('near');
   if (!nearby) { box.hidden = true; return; }
