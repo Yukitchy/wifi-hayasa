@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="いま繋いでいるWi-Fiの速さを測って、場所ごとに並べて比べるツール。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Wi-Fi速さくらべ">
+<meta property="og:description" content="いま繋いでいるWi-Fiの速さを測って、場所ごとに並べて比べるツール。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232F5BFF'/%3E%3Cpath d='M6 22h20M6 16h14M6 10h8' stroke='%23fff' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<title>Wi-Fi速さくらべ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+JP:wght@400;700;900&display=swap">
+<style>
+/* 1列のレース場: 上に問い、中に走路、下に操作。いちばん速い走路だけ太く青い */
+:root {
+  --bg: #FFFFFF; --fg: #111318; --sub: #5C6270; --track: #EEF0F4; --lane: #C9CFDA;
+  --accent: #2F5BFF; --on-accent: #FFFFFF; --tint: #F2F5FF; --field: #E1E4EA; --danger: #C2272D;
+  --font: Inter, "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0F1115; --fg: #EEF0F4; --sub: #9AA2B1; --track: #1E222A; --lane: #3A414D;
+  --accent: #5B7FFF; --on-accent: #FFFFFF; --tint: #171D33; --field: #2C323D; --danger: #FF6B6B; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0F1115; --fg: #EEF0F4; --sub: #9AA2B1; --track: #1E222A; --lane: #3A414D;
+  --accent: #5B7FFF; --on-accent: #FFFFFF; --tint: #171D33; --field: #2C323D; --danger: #FF6B6B; color-scheme: dark }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); }
+.app { box-sizing: border-box; max-width: 480px; min-height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 20px;
+  padding-block: 40px 24px; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.status { font-size: 13px; font-weight: 600; color: var(--sub); min-height: 18px; }
+h1 { margin: 6px 0 0; font-size: 40px; line-height: 1.1; font-weight: 900; letter-spacing: -0.02em; }
+.lanes { display: flex; flex-direction: column; gap: 16px; }
+.lane { display: flex; flex-direction: column; gap: 6px; }
+.lane-head { display: flex; align-items: baseline; gap: 8px; }
+.lane-name { font-size: 15px; font-weight: 700; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lane-meta { font-size: 12px; color: var(--sub); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tag { font-size: 11px; font-weight: 700; color: var(--sub); border: 1px solid var(--field); border-radius: 6px; padding: 0 5px; margin-left: 6px; }
+.del { width: 32px; height: 32px; margin: -8px -6px -8px 0; border: none; background: none; color: var(--sub); border-radius: 8px; cursor: pointer; display: grid; place-items: center; }
+.del:hover { color: var(--danger); background: var(--track); }
+.track { height: 36px; background: var(--track); border-radius: 10px; overflow: hidden; }
+.bar { height: 100%; width: 0; background: var(--lane); border-radius: 10px; display: flex; align-items: center; justify-content: flex-end; padding-right: 12px; box-sizing: border-box; transition: width .7s cubic-bezier(.2,.8,.2,1); }
+.bar span { font-size: 14px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lane.win .track { height: 52px; }
+.lane.win .bar { background: var(--accent); }
+.lane.win .bar span { font-size: 20px; color: var(--on-accent); }
+.lane.live .bar { background: var(--accent); opacity: .55; transition: width .25s linear; }
+.lane.live .bar span { color: var(--on-accent); }
+.empty { font-size: 15px; line-height: 1.7; color: var(--sub); margin: 0; }
+.pick { background: var(--tint); border-radius: 16px; padding: 16px 18px; display: flex; gap: 14px; align-items: center; }
+.pick b { display: block; font-size: 17px; font-weight: 800; }
+.pick small { display: block; font-size: 13px; color: var(--sub); margin-top: 2px; }
+.pick svg { flex: none; color: var(--accent); }
+form { display: flex; gap: 8px; align-items: flex-end; margin-top: auto; }
+label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: var(--sub); }
+input { height: 48px; box-sizing: border-box; padding: 0 16px; border: 2px solid var(--field); border-radius: 24px; background: var(--bg); color: var(--fg); font: inherit; font-size: 16px; font-weight: 400; }
+input:focus-visible { outline: none; border-color: var(--accent); }
+.go { height: 48px; padding: 0 20px; border: none; border-radius: 24px; background: var(--accent); color: var(--on-accent); font: inherit; font-size: 15px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.go:disabled { opacity: .5; cursor: default; }
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--sub); line-height: 1.6; }
+.clear { min-height: 36px; padding: 0 12px; border: 1px solid var(--field); border-radius: 18px; background: none; color: var(--sub); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.clear.armed { border-color: var(--danger); color: var(--danger); }
+button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .bar { transition: none; } }
+</style>
+
+<main class="app">
+  <div>
+    <div class="status" id="status" aria-live="polite"></div>
+    <h1>どれが速い？</h1>
+  </div>
+  <div class="lanes" id="lanes"></div>
+  <div class="pick" id="pick" hidden>
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 22V4"/><path d="M4 4h12l-2 4 2 4H4"/></svg>
+    <div><b id="pickName"></b><small id="pickWhy"></small></div>
+  </div>
+  <form id="form">
+    <label for="name">いま繋いでいるWi-Fiの名前
+      <input id="name" type="text" autocomplete="off" placeholder="例: Office_2F" maxlength="40">
+    </label>
+    <button class="go" id="go" type="submit">走らせる</button>
+  </form>
+  <div class="foot">
+    <span>同じ名前で走らせると上書きします。1回で最大60MBほど通信します。</span>
+    <button class="clear" id="clear" type="button">記録を消す</button>
+  </div>
+</main>
+
+<script>
+const BASE = 'https://speed.cloudflare.com';
+const KEY = 'wifi-race-v1';
+const EXAMPLES = [
+  { ssid: 'Cafe_Free', down: 182, up: 41, ping: 12, ex: true },
+  { ssid: 'Home_5G', down: 146, up: 88, ping: 8, ex: true },
+  { ssid: 'iPhoneテザリング', down: 58, up: 12, ping: 38, ex: true }
+];
+const $ = (id) => document.getElementById(id);
+let records = load();
+let live = null; // 測定中の走路 { ssid, phase, down }
+let busy = false;
+
+function load() {
+  try { const v = JSON.parse(localStorage.getItem(KEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(records)); } catch (e) {}
+}
+const fmt = (n) => (n >= 10 ? String(Math.round(n)) : n.toFixed(1));
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const when = (t) => { const d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
+
+function render() {
+  const showing = records.length ? records : EXAMPLES;
+  const sorted = showing.slice().sort((a, b) => b.down - a.down);
+  const max = Math.max(1, ...sorted.map((r) => r.down), live ? live.down : 0);
+  let html = '';
+  if (live) {
+    html += '<div class="lane live"><div class="lane-head"><span class="lane-name">' + esc(live.ssid) + '</span><span class="lane-meta">' + live.phase + '</span></div>'
+      + '<div class="track"><div class="bar" style="width:' + Math.max(live.down / max * 100, live.down ? 18 : 0) + '%"><span>' + (live.down ? fmt(live.down) + ' Mbps' : '') + '</span></div></div></div>';
+  }
+  sorted.forEach((r, i) => {
+    const win = i === 0 && sorted.length > 1;
+    const meta = '応答 ' + r.ping + ' ms・上り ' + fmt(r.up) + (r.t ? '・' + when(r.t) : '');
+    html += '<div class="lane' + (win ? ' win' : '') + '"><div class="lane-head"><span class="lane-name">' + esc(r.ssid) + (r.ex ? '<span class="tag">例</span>' : '') + '</span>'
+      + '<span class="lane-meta">' + meta + '</span>'
+      + (r.ex ? '' : '<button class="del" type="button" data-del="' + esc(r.ssid) + '" aria-label="' + esc(r.ssid) + ' の記録を消す"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>')
+      + '</div><div class="track"><div class="bar" data-w="' + Math.max(r.down / max * 100, 22) + '"><span>' + fmt(r.down) + ' Mbps</span></div></div></div>';
+  });
+  $('lanes').innerHTML = html;
+  requestAnimationFrame(() => document.querySelectorAll('.bar[data-w]').forEach((b) => { b.style.width = b.dataset.w + '%'; }));
+
+  if (!live) {
+    $('status').textContent = records.length
+      ? records.length + 'か所を記録しました'
+      : '下は見本です。Wi-Fiの名前を入れて走らせると、本物の記録に入れ替わります';
+  }
+  const pick = $('pick');
+  if (sorted.length > 1 && !live) {
+    const [a, b] = sorted;
+    $('pickName').textContent = a.ssid + ' に繋ぐのがおすすめ';
+    $('pickWhy').textContent = '2位の ' + b.ssid + ' より ' + (a.down / b.down).toFixed(1) + '倍速い（下り）';
+    pick.hidden = false;
+  } else {
+    pick.hidden = true;
+  }
+}
+
+async function measurePing() {
+  const ts = [];
+  for (let i = 0; i < 6; i++) {
+    const t = performance.now();
+    await fetch(BASE + '/__down?bytes=0&r=' + Math.random(), { cache: 'no-store' });
+    ts.push(performance.now() - t);
+  }
+  ts.shift(); // 1回目は接続の準備ぶん遅いので外す
+  ts.sort((a, b) => a - b);
+  return Math.round(ts[Math.floor(ts.length / 2)]);
+}
+
+async function measureDown(onProgress) {
+  const ctrl = new AbortController();
+  const res = await fetch(BASE + '/__down?bytes=40000000&r=' + Math.random(), { cache: 'no-store', signal: ctrl.signal });
+  const reader = res.body.getReader();
+  let bytes = 0, t0 = null, mbps = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const now = performance.now();
+      if (t0 === null) { t0 = now; continue; } // 最初の塊までは待ち時間なので数えない
+      bytes += value.length;
+      const dt = (now - t0) / 1000;
+      if (dt > 0.3) { mbps = bytes * 8 / dt / 1e6; onProgress(mbps); }
+      if (dt > 7) { ctrl.abort(); break; }
+    }
+  } catch (e) { if (e.name !== 'AbortError') throw e; }
+  return mbps;
+}
+
+async function measureUp(onProgress) {
+  const chunk = new Uint8Array(4000000);
+  const t0 = performance.now();
+  let bytes = 0;
+  for (let i = 0; i < 4; i++) {
+    await fetch(BASE + '/__up?r=' + Math.random(), { method: 'POST', body: chunk });
+    bytes += chunk.length;
+    const dt = (performance.now() - t0) / 1000;
+    onProgress(bytes * 8 / dt / 1e6);
+    if (dt > 6) break;
+  }
+  return bytes * 8 / ((performance.now() - t0) / 1000) / 1e6;
+}
+
+async function run(ssid) {
+  busy = true;
+  $('go').disabled = true;
+  live = { ssid, phase: '応答を測定中…', down: 0 };
+  $('status').textContent = ssid + ' を測っています（10〜15秒）';
+  render();
+  try {
+    const ping = await measurePing();
+    live.phase = '下りを測定中…'; render();
+    const down = await measureDown((m) => { live.down = m; render(); });
+    live.phase = '上りを測定中…'; render();
+    const up = await measureUp(() => {});
+    records = records.filter((r) => r.ssid !== ssid).concat([{ ssid, down: Math.round(down * 10) / 10, up: Math.round(up * 10) / 10, ping, t: Date.now() }]);
+    save();
+    live = null;
+    render();
+    const rank = records.slice().sort((a, b) => b.down - a.down).findIndex((r) => r.ssid === ssid) + 1;
+    $('status').textContent = ssid + ' は ' + records.length + 'か所中 ' + rank + '位でした';
+  } catch (e) {
+    live = null;
+    render();
+    $('status').textContent = '測れませんでした。インターネットに繋がっているか確かめて、もう一度走らせてください';
+  }
+  busy = false;
+  $('go').disabled = false;
+}
+
+$('form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (busy) return;
+  const ssid = $('name').value.trim() || 'Wi-Fi ' + (records.length + 1);
+  $('name').value = '';
+  run(ssid);
+});
+
+$('lanes').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-del]');
+  if (!b || busy) return;
+  records = records.filter((r) => r.ssid !== b.dataset.del);
+  save();
+  render();
+});
+
+let armTimer;
+$('clear').addEventListener('click', () => {
+  const btn = $('clear');
+  if (busy || !records.length) return;
+  if (!btn.classList.contains('armed')) {
+    btn.classList.add('armed');
+    btn.textContent = 'もう一度押すと全部消します';
+    clearTimeout(armTimer);
+    armTimer = setTimeout(() => { btn.classList.remove('armed'); btn.textContent = '記録を消す'; }, 3000);
+    return;
+  }
+  clearTimeout(armTimer);
+  btn.classList.remove('armed');
+  btn.textContent = '記録を消す';
+  records = [];
+  save();
+  render();
+});
+
+render();
+</script>
